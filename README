@@ -1,0 +1,11 @@
+Biped Footstep Planner
+(README last updated 03/28/2013 on initial commit - Keliang He)
+
+To run:
+> make
+> ./bipedPlan 
+This will show you the parameters needed for bipedPlan
+
+Example queries are in file query.txt
+
+The output file DebugImage.svg will show the planned steps, Heuristic.svg will show the heuristic used. 
