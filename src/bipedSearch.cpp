@@ -2,11 +2,7 @@
 #include <algorithm>
 #include <map>
 
-bipedSearch::bipedSearch(){
-  _queue.clear();
-  _poppedNodes.clear();
-  _expCount = 0;
-}
+bipedSearch::bipedSearch(){ clear(); }
 
 bool bipedSearch::queueEmpty(){
   return _queue.empty();
@@ -38,6 +34,7 @@ void bipedSearch::enqueue(float x,
 			  float costToCome, 
 			  float costToGo){
   biped* newNode = new biped(x, y, angle, ft);
+  _allocated.push_back(newNode);
   newNode->pred = pred;
   newNode->costToCome = costToCome;
   newNode->costToGo = costToGo;
@@ -52,15 +49,19 @@ void bipedSearch::enqueue(biped* newNode){
 }
 
 bipedSearch::~bipedSearch(){
-  while (!_queue.empty()){
-        delete _queue.back();
-        _queue.pop_back();
-  }
-  while (!_poppedNodes.empty()){
-    delete _poppedNodes.back();
-    _poppedNodes.pop_back();
-  }
+  clear();
 }
+
+void bipedSearch::clear() {
+  while (!_allocated.empty()){
+    delete _allocated.back();
+    _allocated.pop_back();
+  }
+  _queue.clear();
+  _poppedNodes.clear();
+  _expCount = 0;
+}
+
 
 size_t bipedSearch::getCount(){
   return _expCount;
@@ -69,7 +70,9 @@ size_t bipedSearch::getCount(){
 biped* bipedSearch::search(float x, float y, float angle,
 			   float goalx, float goaly, float goalr,
 			   BipedChecker* checker, int maxDepth, int viewDepth){
+  clear();
   biped* initial = new biped(x, y, angle, LEFT);
+  _allocated.push_back(initial);
   initial->pred = NULL;
   initial->costToCome = 0;
   initial->costToGo = 0;
@@ -85,6 +88,8 @@ biped* bipedSearch::search(biped* initial,
 			   bool heuristic, 
 			   int maxDepth, 
 			   int viewDepth){
+
+
   map<long, biped*> m;
   map<long, biped*>::const_iterator it;
   m[checker->getAddress(initial)] = initial;
@@ -101,9 +106,8 @@ biped* bipedSearch::search(biped* initial,
     // TODO Check for goal
     if((curr->x-goalx) * (curr->x-goalx) +
        (curr->y-goaly) * (curr->y-goaly) < goalr * goalr){
-      cout<<"total cost is "<<curr->costToCome<<endl;
       return curr;
-        }
+    }
     if (curr->depth > (size_t)maxDepth){
       continue;
     }

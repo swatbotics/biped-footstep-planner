@@ -11,6 +11,7 @@
 
 #include <math.h>
 #include <sstream>
+#include <sys/time.h>
 
 typedef vec2u<int> vec2i;
 
@@ -26,20 +27,22 @@ vec2i init(-1,-1);
 float initTheta = 0;
 
 int goalr = 3;
-float inflate_h = 1.0;
-float inflate_z = 1.0;
+float inflate_h = 1.25;
+float inflate_z = 1;
 
 int maxDepth = 1000;
-int viewDepth = 10;
+int viewDepth = 30;
 
 vec2i goal(-1,-1);
  
 BipedChecker* checker=0;
-bipedSearch* helper=0;
+bipedSearch helper;
 
 biped* searchResult=0;
+double planTime = 0;
 
-bool auto_plan = false;
+bool auto_plan = true;
+bool show_help = false;
 
 GLUquadric* quadric = 0;
 
@@ -62,6 +65,14 @@ enum ChangeFlags {
 
 int changes = 0;
 
+double gettimeasdouble() {
+  
+  struct timeval tp;
+  gettimeofday(&tp, NULL);
+  return double(tp.tv_sec) + 1e-6 * double(tp.tv_usec);
+
+}
+
 bool valid(const vec2i& p) {
   return ( p.x() >= 0 && 
            p.y() >= 0 && 
@@ -73,7 +84,6 @@ bool valid(const vec2i& p) {
 void updateSearch() { 
 
   if (!valid(init) || !valid(goal)) { 
-    std::cerr << "not running search cause invalid\n";
     return;
   }
 
@@ -83,13 +93,19 @@ void updateSearch() {
     checker = new BipedChecker(&grid, goal.x(), goal.y(), inflate_h, inflate_z);
   }
   
-  delete helper;
-  helper = 0;
-  helper = new bipedSearch;
+  searchResult = 0;
+  helper.clear();
 
-  searchResult = helper->search(init.x(), init.y(), initTheta,
-                                goal.x(), goal.y(), goalr,
-                                checker, maxDepth, viewDepth);
+  double start = gettimeasdouble();
+
+  searchResult = helper.search(init.x(), init.y(), initTheta,
+                               goal.x(), goal.y(), goalr,
+                               checker, maxDepth, viewDepth);
+
+  planTime = gettimeasdouble() - start;
+
+  changes = NoChange;
+
 
 }
 
@@ -192,14 +208,35 @@ void display() {
   gluOrtho2D(0, width, 0, height);
 
   std::ostringstream ostr;
-  ostr << "Goal pos:     (" << goal.x() << ", " << goal.y() << ")\n";
-  ostr << "Init pos:     (" << init.x() << ", " << init.y() << ")\n";
-  ostr << "Init theta:   " << initTheta*180/M_PI << "\n";
-  ostr << "XY inflation: " << inflate_h << "\n";
-  ostr << "Z inflation:  " << inflate_z << "\n";
-  ostr << "Max depth:    " << maxDepth << "\n";
-  ostr << "View depth:   " << viewDepth << "\n";
-  ostr << "Auto-plan:    " << (auto_plan ? "on" : "off");
+  ostr << "Goal pos:     (" << goal.x() << ", " << goal.y() << ")\n"
+       << "Init pos:     (" << init.x() << ", " << init.y() << ")\n"
+       << "Init theta:   " << initTheta*180/M_PI << "\n"
+       << "XY inflation: " << inflate_h << "\n"
+       << "Z inflation:  " << inflate_z << "\n"
+       << "Max depth:    " << maxDepth << "\n"
+       << "View depth:   " << viewDepth << "\n"
+       << "Auto-plan:    " << (auto_plan ? "on" : "off") << "\n"
+       << "\n"
+       << "Plan cost: " << (searchResult ? searchResult->costToCome : 0) << "\n"
+       << "Plan time: " << (searchResult ? planTime : 0) << "\n";
+
+  if (show_help) { 
+    ostr << "\n\n"
+         << " Left-click init pos\n"
+         << "Shift+click init theta\n"
+         << "Right-click goal pos\n\n"
+         << "        1/2 max depth\n"
+         << "        3/4 view depth\n"
+         << "        -/+ XY inflation\n"
+         << "          A auto-plan\n"
+         << "      Enter re-plan\n"
+         << "        ESC quit\n"
+         << "          ? hide help";
+  } else {
+    ostr << "\nPress ? to toggle help.";
+  }
+    
+
 
   std::string str = ostr.str();
   
@@ -302,6 +339,9 @@ void keyboard(unsigned char key, int x, int y) {
 
   switch (key) {
   case 27: exit(0); break;
+  case '?':
+    show_help = !show_help;
+    break;
   case 'a': 
     auto_plan = !auto_plan;
     break;
@@ -309,27 +349,27 @@ void keyboard(unsigned char key, int x, int y) {
     plan = true;
     break;
   case '+': case '=':
-    inflate_h = std::min(inflate_h + 0.5, 10.0);
+    inflate_h = std::min(inflate_h + 0.25, 10.0);
     changes |= InflationChanged;
     break;
   case '-':
-    inflate_h = std::max(inflate_h - 0.5, 0.5);
+    inflate_h = std::max(inflate_h - 0.25, 0.5);
     changes |= InflationChanged;
     break;
   case '1': 
-    maxDepth = std::max(maxDepth-50, 50);
+    maxDepth = std::max(maxDepth-10, 10);
     changes |= DepthChanged;
     break;
   case '2':
-    maxDepth = std::min(maxDepth+50, 2000);
+    maxDepth = std::min(maxDepth+10, 2000);
     changes |= DepthChanged;
     break;
   case '3': 
-    viewDepth = std::max(viewDepth-10, 10);
+    viewDepth = std::max(viewDepth-1, 4);
     changes |= DepthChanged;
     break;
   case '4':
-    viewDepth = std::min(viewDepth+10, 100);
+    viewDepth = std::min(viewDepth+1, 100);
     changes |= DepthChanged;
     break;
   };
@@ -388,9 +428,9 @@ void mouse(int button, int state, int x, int y) {
     
     if (button == GLUT_LEFT_BUTTON) {
       int mod = glutGetModifiers();
-      if (mod == GLUT_ACTIVE_SHIFT) {
+      if (mod == 0) {
         mouse_action = MouseInit;
-      } else if (mod == GLUT_ACTIVE_CTRL) {
+      } else if (mod == GLUT_ACTIVE_SHIFT) {
         mouse_action = MouseTheta;
       }
     } else if (button == GLUT_RIGHT_BUTTON) {

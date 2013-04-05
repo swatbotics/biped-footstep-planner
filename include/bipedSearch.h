@@ -10,11 +10,16 @@ private:
     NodeArray _queue;
     size_t _expCount;
     NodeArray _poppedNodes;
+    NodeArray _allocated;
     
 
 public:
 
+  
     bipedSearch();
+
+
+    void clear();
     bool queueEmpty();
     void enqueue(float x, float y, float angle, foot ft, biped* pred, float costToCome, float costToGo);
     void enqueue(biped* newNode);

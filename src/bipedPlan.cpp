@@ -34,6 +34,10 @@ int main(int argc, char** argv){
   
   biped* goal = helper.search(initx, inity, initTheta, goalx, goaly, goalr, checker, maxDepth, viewDepth); 
   time_t t3; time(&t3);
+
+  if (goal) {
+    cout << "total cost is " << goal->costToCome << "\n";
+  }
   cout<<"search time is: "<<difftime(t3,t2)<<" seconds"<<endl;
   
   if (goal==NULL){
