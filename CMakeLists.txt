@@ -47,3 +47,6 @@ add_library(bplanner src/biped.cpp src/biped_checker.cpp src/bipedSearch.cpp)
 add_executable(bipedPlan src/bipedPlan.cpp)
 target_link_libraries(bipedPlan bplanner ${PNG_LIBRARY})
 
+add_gui_app( bipedDemo src/bipedDemo.cpp)
+target_link_libraries( bipedDemo bplanner ${GLUT_LIBRARY} ${OPENGL_LIBRARY} 
+  ${PNG_LIBRARY} ${EXPAT_LIBRARY} )
