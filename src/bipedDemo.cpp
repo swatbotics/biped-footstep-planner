@@ -10,6 +10,7 @@
 #endif
 
 #include <math.h>
+#include <sstream>
 
 typedef vec2u<int> vec2i;
 
@@ -21,7 +22,7 @@ GLint viewport[4];
 GLdouble projection[16];
 GLdouble modelview[16];
 
-vec2i init(10, 10);
+vec2i init(-1,-1);
 float initTheta = 0;
 
 int goalr = 3;
@@ -29,14 +30,16 @@ float inflate_h = 1.0;
 float inflate_z = 1.0;
 
 int maxDepth = 1000;
-int viewDepth = 40;
+int viewDepth = 10;
 
 vec2i goal(-1,-1);
  
-bipedSearch helper;
 BipedChecker* checker=0;
+bipedSearch* helper=0;
 
 biped* searchResult=0;
+
+bool auto_plan = false;
 
 GLUquadric* quadric = 0;
 
@@ -50,10 +53,11 @@ enum MouseAction {
 MouseAction mouse_action = MouseNone;
 
 enum ChangeFlags {
-  NoChange          = 0,
+  NoChange         = 0x00,
   InitChanged      = 0x01,
   GoalChanged      = 0x02,
   InflationChanged = 0x04,
+  DepthChanged     = 0x08,
 };
 
 int changes = 0;
@@ -70,34 +74,41 @@ void updateSearch() {
 
   if (!valid(init) || !valid(goal)) { 
     std::cerr << "not running search cause invalid\n";
+    return;
   }
 
   if (!checker or (changes & (GoalChanged | InflationChanged))) {
     delete checker;
+    checker = 0;
     checker = new BipedChecker(&grid, goal.x(), goal.y(), inflate_h, inflate_z);
-    std::cerr << "built heuristic!\n";
   }
   
-  searchResult = helper.search(init.x(), init.y(), initTheta*180/M_PI,
-                               goal.x(), goal.y(), goalr,
-                               checker, maxDepth, viewDepth);
+  delete helper;
+  helper = 0;
+  helper = new bipedSearch;
+
+  searchResult = helper->search(init.x(), init.y(), initTheta,
+                                goal.x(), goal.y(), goalr,
+                                checker, maxDepth, viewDepth);
 
 }
 
-void draw(const biped* b) { 
+void draw(const biped* b, bool recurse) { 
 
   if (!b) { return; }
+
+  if (recurse) { draw(b->pred, recurse); }
 
   glPushMatrix();
   glTranslated(b->x, b->y, 0);
   glRotated(b->theta*180/M_PI, 0, 0, 1);
 
-  int r1 = (b->ft == RIGHT) ? 255 : 0;
-  int g1 = 0;
-  int b1 = (b->ft == LEFT) ? 255 : 0;
+  int r1 = (b->ft == RIGHT) ? 255 : 191;
+  int g1 = 191;
+  int b1 = (b->ft == LEFT) ? 255 : 191;
 
   int r0 = r1/4;
-  int g0 = g1/4;
+  int g0 = 0;
   int b0 = b1/4;
 
   glBegin(GL_QUADS);
@@ -111,6 +122,13 @@ void draw(const biped* b) {
   
   glPopMatrix();
   
+}
+
+void drawString(int x, int y, const std::string& str, void* 
+                font=GLUT_BITMAP_8_BY_13) {
+  
+  glRasterPos2i(x, y);
+
 }
 
 void display() {
@@ -166,11 +184,75 @@ void display() {
     glPopMatrix();
   }
 
-  const biped* b = searchResult;
-  while (b) {
-    draw(b);
-    b = b->pred;
+  draw(searchResult, true);
+
+  glMatrixMode(GL_PROJECTION);
+  glPushMatrix();
+  glLoadIdentity();
+  gluOrtho2D(0, width, 0, height);
+
+  std::ostringstream ostr;
+  ostr << "Goal pos:     (" << goal.x() << ", " << goal.y() << ")\n";
+  ostr << "Init pos:     (" << init.x() << ", " << init.y() << ")\n";
+  ostr << "Init theta:   " << initTheta*180/M_PI << "\n";
+  ostr << "XY inflation: " << inflate_h << "\n";
+  ostr << "Z inflation:  " << inflate_z << "\n";
+  ostr << "Max depth:    " << maxDepth << "\n";
+  ostr << "View depth:   " << viewDepth << "\n";
+  ostr << "Auto-plan:    " << (auto_plan ? "on" : "off");
+
+  std::string str = ostr.str();
+  
+  void* font = GLUT_BITMAP_8_BY_13;
+  const int tx = 8;
+  const int ty = 13;
+  const int th = ty+2;
+  int maxwidth = 0;
+  int linewidth = 0;
+  int rh = th;
+
+  for (size_t i=0; i<str.length(); ++i) {
+    char c = str[i];
+    if (c == '\n') { 
+      maxwidth = std::max(maxwidth, linewidth);
+      linewidth = 0;
+      rh += th;
+    } else { 
+      linewidth += tx;
+    }
   }
+  maxwidth = std::max(maxwidth, linewidth);
+
+  int rw = maxwidth + 20;
+  rh += 10;
+
+  glColor4ub(191,191,255,225);
+  glEnable(GL_BLEND);
+  glBegin(GL_QUADS);
+  glVertex2f( 0, height);
+  glVertex2f(rw, height);
+  glVertex2f(rw, height-rh);
+  glVertex2f( 0, height-rh);
+  glEnd();
+  glDisable(GL_BLEND);
+
+  int rx = 10;
+  int ry = height-th;
+
+  glColor3ub(0,0,0);
+  glRasterPos2i(rx, ry);
+
+  for (size_t i=0; i<str.length(); ++i) {
+    char c = str[i];
+    if (c == '\n') {
+      ry -= th;
+      glRasterPos2i(rx, ry);
+    } else {
+      glutBitmapCharacter(font, str[i]);
+    }
+  }
+
+  glPopMatrix();
 
   glutSwapBuffers();
 
@@ -214,9 +296,50 @@ void reshape(int w, int h) {
 }
 
 void keyboard(unsigned char key, int x, int y) {
+
+  key = tolower(key);
+  bool plan = false;
+
   switch (key) {
   case 27: exit(0); break;
+  case 'a': 
+    auto_plan = !auto_plan;
+    break;
+  case '\n': case '\r': // ENTER
+    plan = true;
+    break;
+  case '+': case '=':
+    inflate_h = std::min(inflate_h + 0.5, 10.0);
+    changes |= InflationChanged;
+    break;
+  case '-':
+    inflate_h = std::max(inflate_h - 0.5, 0.5);
+    changes |= InflationChanged;
+    break;
+  case '1': 
+    maxDepth = std::max(maxDepth-50, 50);
+    changes |= DepthChanged;
+    break;
+  case '2':
+    maxDepth = std::min(maxDepth+50, 2000);
+    changes |= DepthChanged;
+    break;
+  case '3': 
+    viewDepth = std::max(viewDepth-10, 10);
+    changes |= DepthChanged;
+    break;
+  case '4':
+    viewDepth = std::min(viewDepth+10, 100);
+    changes |= DepthChanged;
+    break;
   };
+
+  if ((auto_plan || plan) && changes) { 
+    updateSearch();
+  }
+
+  glutPostRedisplay();
+
 }
 
 vec2i unproject(int x, int y) {
@@ -240,6 +363,8 @@ void motion(int x, int y) {
   } else if (mouse_action == MouseInit && valid(mpos) && mpos != init) {
 
     init = mpos;
+    vec2i diff = goal - init;
+    initTheta = atan2(diff.y(), diff.x());
     changes |= InitChanged;
 
   } else if (mouse_action == MouseTheta && valid(init)) {
@@ -249,6 +374,8 @@ void motion(int x, int y) {
     changes |= InitChanged;
 
   }
+
+  if (changes) { searchResult = 0; }
 
   glutPostRedisplay();
   
@@ -280,7 +407,7 @@ void mouse(int button, int state, int x, int y) {
 
       mouse_action = MouseNone;
 
-      if (changes) { 
+      if (auto_plan && changes) { 
         updateSearch();
         glutPostRedisplay();
       }
@@ -312,12 +439,6 @@ int main(int argc, char** argv) {
     std::cerr << "Error loading grid: " << argv[1] << "\n";
     exit(1);
   }
-  init = vec2i(8,8);
-  goal = vec2i(grid.nx()-8, grid.ny()-8);
-  vec2i diff = goal-init;
-  initTheta = atan2(diff.y(), diff.x());
-
-  updateSearch();
 
   glutCreateWindow("Biped plan demo");
   glutDisplayFunc(display);
@@ -349,6 +470,8 @@ int main(int argc, char** argv) {
                GL_UNSIGNED_BYTE, &(rgbbuf[0]));
 
   quadric = gluNewQuadric();
+
+  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
   glutMainLoop();
 
