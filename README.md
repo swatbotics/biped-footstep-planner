@@ -15,6 +15,21 @@ This project requires cmake, libpng, and GLUT.  To build:
     ln -s ../maps maps
     cmake .. -DCMAKE_BUILD_TYPE=Release
     make
+    
+Running bipedDemo
+=================
+
+The `bipedDemo` executable is a GUI-based sandbox to run the planning 
+software. It requires one command-line argument, the name of the map
+to use, for instance:
+
+    ./bipedDemo ./maps/nsh-detail.png
+    
+On Mac OS X, you instead must run
+
+    ./bipedDemo.app/Contents/MacOS/bipedDemo ./maps/nsh-detail.png
+    
+Press ? for help after the demo loads.
 
 Running bipedPlan
 =================
